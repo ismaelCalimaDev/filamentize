@@ -30,7 +30,7 @@ class GenerateAdminPanel
             }
             $fileName = Str::ucfirst(Str::camel($tableName));
             File::put($directory.'\\'. $fileName.'.php', "<?php\nnamespace App\Models;\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nclass $fileName extends Model\n{\n\tprotected \$guarded = [];\n}");
-            Artisan::call("make:filament-resource $fileName");
+            Artisan::call("make:filament-resource $fileName --generate");
         }
     }
 }
