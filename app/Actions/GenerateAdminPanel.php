@@ -20,24 +20,13 @@ class GenerateAdminPanel
     public function handle()
     {
         $tables = Schema::getAllTables();
-        $database = config('database.connections.mysql.database');
         $tableReference = 'Tables_in_'.config('database.connections.mysql.database');
         $directory = app_path("Models");
 
-        foreach ($tables as $table) {
-            $tableName = $table->$tableReference;
-            $fileName = Str::singular(Str::ucfirst(Str::camel($tableName)));
-            $relationship = $this->generateBelongsToRelationships($tableName);
+        $this->generateAllModels($tables, $tableReference, $directory);
 
-            if (!File::exists($directory)) {
-                File::makeDirectory($directory);
-            }
+        $this->addBelongsToToModels($tables, $tableReference, $directory);
 
-            if($fileName !== 'User') {
-                File::put($directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$guarded = [];\n$relationship\n}");
-            }
-            //Artisan::call("make:filament-resource $fileName --generate");
-        }
         $this->generateHasManyRelationships();
     }
 
@@ -78,6 +67,52 @@ class GenerateAdminPanel
                     }
                 }
             }
+        }
+    }
+
+    private function generateAllModels($tables, $tableReference, $directory)
+    {
+        foreach ($tables as $table) {
+            $tableName = $table->$tableReference;
+            $fileName = Str::singular(Str::ucfirst(Str::camel($tableName)));
+
+            if (!File::exists($directory)) {
+                File::makeDirectory($directory);
+            }
+
+            if($fileName !== 'User') {
+                File::put($directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$guarded = [];\n}");
+            }
+            //Artisan::call("make:filament-resource $fileName --generate");
+        }
+    }
+
+    private function addBelongsToToModels($tables, $tableReference, $directory)
+    {
+        foreach ($tables as $table) {
+            $tableName = $table->$tableReference;
+            $fileName = Str::singular(Str::ucfirst(Str::camel($tableName)));
+
+            $foreignKeys = Schema::getConnection()->getDoctrineSchemaManager()->listTableForeignKeys($tableName);
+            foreach ($foreignKeys as $foreignKey) {
+                $localColumns = $foreignKey->getLocalColumns();
+                $referencedTable = $foreignKey->getForeignTableName();
+                if($referencedTable) {
+                    $relationshipFileName = Str::singular(Str::ucfirst(Str::camel($referencedTable)));
+                    $prevContent = File::get($directory.'\\'. $fileName.'.php');
+                    $relationship = "\n\tpublic function ".Str::singular(Str::camel($referencedTable))."(): BelongsTo\n\t{\n\t\treturn \$this->belongsTo(".$relationshipFileName."::class);\n\t}\n}";
+                    if($fileName !== 'User') {
+                        File::put($directory.'\\'. $fileName.'.php', str($prevContent)->replaceLast('}', '').$relationship);
+                    }
+                }
+            }
+
+            /*            if($fileName !== 'User') {
+                            File::put($directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$guarded = [];\n$relationship\n}");
+                        }*/
+            //todo: end
+
+            //Artisan::call("make:filament-resource $fileName --generate");
         }
     }
 }
