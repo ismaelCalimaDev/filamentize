@@ -31,8 +31,6 @@ class GenerateAdminPanel
 
     public function handle()
     {
-        //$this->formatFilamentData("ActivationType");
-
         $tableReference = 'Tables_in_'.config('database.connections.mysql.database');
 
         $this->generateAllModels($tableReference);
@@ -128,76 +126,87 @@ class GenerateAdminPanel
 
     private function formatFilamentData(string $fileName)
     {
-        try {
-            $model = "App\Models\\$fileName";
-            $relationMethods = $this->getRelationMethods($model);
             $path = app_path('Filament\Resources\\').$fileName."Resource.php";
-
-            $file = File::get($path);
-            $fileLines = explode("\n", $file);
-
-            foreach ($fileLines as $key => $line) {
-                if(str($line)->contains($relationMethods)){
-                    if(str($line)->contains('->relationship')) {
-                        $filamentField = str($line)->between("->relationship(", ")")->value();
-                        $relation = str($filamentField)->betweenFirst("'", "'")->value();
-                        $relationField = str($filamentField)->after($relation."'")->between("'", "'")->value();
-                        $newField = $this->getNewFilamentField(str($relation)->ucfirst()->value());
-                        $newLine = str($line)->replace($relationField, $newField)->value();
-                        $fileLines[$key] = $newLine;
-                        continue;
-                    }
-                    $filamentField = str($line)->betweenFirst('(', ')');
-                    $relationFileName = str($filamentField)->between("'", ".");
-                    if($this->getNewFilamentField(str($relationFileName)->ucfirst())) {
-                        $newField = "'".$relationFileName.'.'.$this->getNewFilamentField(str($relationFileName)->ucfirst())."'";
-                        $newLine = str($line)->replace($filamentField, $newField);
-                        $fileLines[$key] = $newLine;
-                    }
-                }
-            }
+            $fileLines = $this->getModifiedLines($path, $fileName);
             $newFileContent = implode("\n", $fileLines);
             File::put($path, $newFileContent);
+    }
+
+    private function getRelationMethods(string $model): array
+    {
+        try {
+            $modelClass = new $model();
+            $reflection = new ReflectionClass($modelClass);
+            $methods= $reflection->getMethods();
+
+            $relationMethods = [];
+            foreach ($methods as $method) {
+                if($method->getReturnType()?->getName() === BelongsTo::class || $method->getReturnType()?->getName() === HasMany::class) {
+                    $relationMethods[] = $method->getName();
+                }
+            }
+            return $relationMethods;
+        }catch (\Error $error) {
+            logger($error);
+        }
+    }
+
+    private function getNewFilamentField(string $relationFileName)
+    {
+        try {
+            $model = "App\Models\\$relationFileName";
+            $modelClass= new $model();
+
+            $table = $modelClass->getTable();
+            $columns = Schema::getColumnListing($table);
+
+            $foreignKeys =  DB::getDoctrineSchemaManager()->listTableForeignKeys($table);
+            $noForeignKeys = array_filter($columns, function ($column) use ($foreignKeys) {
+                return !in_array($column, array_keys($foreignKeys)) && stripos(str($column)->lower()->value(), 'id') === false;
+            });
+
+            foreach ($noForeignKeys as $foreignKey) {
+                if(str($foreignKey)->contains(['name', 'title', 'text'])) {
+                    $field = $foreignKey;
+                    break;
+                }
+                $field = $foreignKey;
+            }
+            return $field;
         } catch (\Error $error) {
             logger($error);
         }
     }
 
-    private function getRelationMethods(string $model): array
+    private function getModifiedLines($path, $fileName): array
     {
-        $modelClass = new $model();
-        $reflection = new ReflectionClass($modelClass);
-        $methods= $reflection->getMethods();
+        $model = "App\Models\\$fileName";
+        $relationMethods = $this->getRelationMethods($model);
 
-        $relationMethods = [];
-        foreach ($methods as $method) {
-            if($method->getReturnType()?->getName() === BelongsTo::class || $method->getReturnType()?->getName() === HasMany::class) {
-                $relationMethods[] = $method->getName();
+        $file = File::get($path);
+        $fileLines = explode("\n", $file);
+
+
+        foreach ($fileLines as $key => $line) {
+            if(str($line)->contains($relationMethods)){
+                if(str($line)->contains('->relationship')) {
+                    $filamentField = str($line)->between("->relationship(", ")")->value();
+                    $relation = str($filamentField)->betweenFirst("'", "'")->value();
+                    $relationField = str($filamentField)->after($relation."'")->between("'", "'")->value();
+                    $newField = $this->getNewFilamentField(str($relation)->ucfirst()->value());
+                    $newLine = str($line)->replace($relationField, $newField)->value();
+                    $fileLines[$key] = $newLine;
+                    continue;
+                }
+                $filamentField = str($line)->betweenFirst('(', ')');
+                $relationFileName = str($filamentField)->between("'", ".");
+                if($this->getNewFilamentField(str($relationFileName)->ucfirst())) {
+                    $newField = "'".$relationFileName.'.'.$this->getNewFilamentField(str($relationFileName)->ucfirst())."'";
+                    $newLine = str($line)->replace($filamentField, $newField);
+                    $fileLines[$key] = $newLine;
+                }
             }
         }
-        return $relationMethods;
-    }
-
-    private function getNewFilamentField(string $relationFileName)
-    {
-        $model = "App\Models\\$relationFileName";
-        $modelClass= new $model();
-
-        $table = $modelClass->getTable();
-        $columns = Schema::getColumnListing($table);
-
-        $foreignKeys =  DB::getDoctrineSchemaManager()->listTableForeignKeys($table);
-        $noForeignKeys = array_filter($columns, function ($column) use ($foreignKeys) {
-            return !in_array($column, array_keys($foreignKeys)) && stripos(str($column)->lower()->value(), 'id') === false;
-        });
-
-        foreach ($noForeignKeys as $foreignKey) {
-            if(str($foreignKey)->contains(['name', 'title', 'text'])) {
-                $field = $foreignKey;
-                break;
-            }
-            $field = $foreignKey;
-        }
-        return $field;
+        return $fileLines;
     }
 }
