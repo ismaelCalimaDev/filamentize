@@ -17,21 +17,43 @@ class GenerateAdminPanel
 
     public string $commandSignature = 'generate:filamentize';
 
+    public $tables;
+    public $directory;
+
+    public function __construct()
+    {
+        $this->tables = Schema::getAllTables();
+        $this->directory = app_path("Models");
+    }
+
     public function handle()
     {
-        $tables = Schema::getAllTables();
         $tableReference = 'Tables_in_'.config('database.connections.mysql.database');
-        $directory = app_path("Models");
 
-        $this->generateAllModels($tables, $tableReference, $directory);
+        $this->generateAllModels($tableReference);
 
-        $this->addBelongsToToModels($tables, $tableReference, $directory);
+        $this->addBelongsToToModels($tableReference);
 
         $this->generateHasManyRelationships();
 
-        $this->generateFilamentResources($tables, $tableReference);
+        $this->generateFilamentResources($tableReference);
     }
 
+    private function generateAllModels($tableReference)
+    {
+        foreach ($this->tables as $table) {
+            $tableName = $this->getTableName($table, $tableReference);
+            $fileName = $this->getFileName($tableName);
+
+            if (!File::exists($this->directory)) {
+                File::makeDirectory($this->directory);
+            }
+            //todo: check this edge case
+            if($fileName !== 'User') {
+                File::put($this->directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$table = '$tableName';\n\tprotected \$guarded = [];\n}");
+            }
+        }
+    }
 
     private function generateHasManyRelationships()
     {
@@ -57,27 +79,12 @@ class GenerateAdminPanel
         }
     }
 
-    private function generateAllModels($tables, $tableReference, $directory)
+
+    private function addBelongsToToModels($tableReference): void
     {
-        foreach ($tables as $table) {
-            $tableName = $table->$tableReference;
-            $fileName = Str::singular(Str::ucfirst(Str::camel($tableName)));
-
-            if (!File::exists($directory)) {
-                File::makeDirectory($directory);
-            }
-
-            if($fileName !== 'User') {
-                File::put($directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$table = '$tableName';\n\tprotected \$guarded = [];\n}");
-            }
-        }
-    }
-
-    private function addBelongsToToModels($tables, $tableReference, $directory)
-    {
-        foreach ($tables as $table) {
-            $tableName = $table->$tableReference;
-            $fileName = Str::singular(Str::ucfirst(Str::camel($tableName)));
+        foreach ($this->tables as $table) {
+            $tableName = $this->getTableName($table, $tableReference);
+            $fileName = $this->getFileName($tableName);
 
             $foreignKeys = Schema::getConnection()->getDoctrineSchemaManager()->listTableForeignKeys($tableName);
             foreach ($foreignKeys as $foreignKey) {
@@ -85,22 +92,32 @@ class GenerateAdminPanel
                 $referencedTable = $foreignKey->getForeignTableName();
                 if($referencedTable) {
                     $relationshipFileName = Str::singular(Str::ucfirst(Str::camel($referencedTable)));
-                    $prevContent = File::get($directory.'\\'. $fileName.'.php');
+                    $prevContent = File::get($this->directory.'\\'. $fileName.'.php');
                     $relationship = "\n\tpublic function ".Str::singular(Str::camel($referencedTable))."(): BelongsTo\n\t{\n\t\treturn \$this->belongsTo(".$relationshipFileName."::class, '$localColumns[0]');\n\t}\n}";
                     if($fileName !== 'User') {
-                        File::put($directory.'\\'. $fileName.'.php', str($prevContent)->replaceLast('}', '').$relationship);
+                        File::put($this->directory.'\\'. $fileName.'.php', str($prevContent)->replaceLast('}', '').$relationship);
                     }
                 }
             }
         }
     }
 
-    private function generateFilamentResources($tables, $tableReference)
+    private function generateFilamentResources($tableReference): void
     {
-        foreach ($tables as $table) {
-            $tableName = $table->$tableReference;
-            $fileName = Str::singular(Str::ucfirst(Str::camel($tableName)));
+        foreach ($this->tables as $table) {
+            $tableName = $this->getTableName($table, $tableReference);
+            $fileName = $this->getFileName($tableName);
             Artisan::call("make:filament-resource $fileName --generate");
         }
+    }
+
+    private function getFileName(string $tableName): string
+    {
+        return str($tableName)->camel()->ucfirst()->singular()->value();
+    }
+
+    private function getTableName($table, $tableReference): string
+    {
+        return $table->$tableReference;
     }
 }
