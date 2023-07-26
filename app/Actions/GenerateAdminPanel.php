@@ -28,23 +28,11 @@ class GenerateAdminPanel
         $this->addBelongsToToModels($tables, $tableReference, $directory);
 
         $this->generateHasManyRelationships();
+
+        $this->generateFilamentResources($tables, $tableReference);
     }
 
-    private function generateBelongsToRelationships($tableName)
-    {
 
-        $foreignKeys = Schema::getConnection()->getDoctrineSchemaManager()->listTableForeignKeys($tableName);
-        $relationship = '';
-        foreach ($foreignKeys as $foreignKey) {
-            $localColumns = $foreignKey->getLocalColumns();
-            $referencedTable = $foreignKey->getForeignTableName();
-            if($referencedTable) {
-                $relationshipFileName = Str::singular(Str::ucfirst(Str::camel($referencedTable)));
-                $relationship = "\n\tpublic function ".Str::singular(Str::camel($referencedTable))."(): BelongsTo\n\t{\n\t\treturn \$this->belongsTo(".$relationshipFileName."::class);\n\t}";
-            }
-        }
-        return $relationship;
-    }
     private function generateHasManyRelationships()
     {
         $files = File::allFiles(app_path("Models"));
@@ -54,7 +42,6 @@ class GenerateAdminPanel
             $class = new $class();
             $reflection = new \ReflectionClass($class);
             $methods = $reflection->getMethods();
-            $belongsToRelations = [];
 
             foreach ($methods as $method) {
                 $returnType = $method->getReturnType();
@@ -81,9 +68,8 @@ class GenerateAdminPanel
             }
 
             if($fileName !== 'User') {
-                File::put($directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$guarded = [];\n}");
+                File::put($directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$table = '$tableName';\n\tprotected \$guarded = [];\n}");
             }
-            //Artisan::call("make:filament-resource $fileName --generate");
         }
     }
 
@@ -100,19 +86,21 @@ class GenerateAdminPanel
                 if($referencedTable) {
                     $relationshipFileName = Str::singular(Str::ucfirst(Str::camel($referencedTable)));
                     $prevContent = File::get($directory.'\\'. $fileName.'.php');
-                    $relationship = "\n\tpublic function ".Str::singular(Str::camel($referencedTable))."(): BelongsTo\n\t{\n\t\treturn \$this->belongsTo(".$relationshipFileName."::class);\n\t}\n}";
+                    $relationship = "\n\tpublic function ".Str::singular(Str::camel($referencedTable))."(): BelongsTo\n\t{\n\t\treturn \$this->belongsTo(".$relationshipFileName."::class, '$localColumns[0]');\n\t}\n}";
                     if($fileName !== 'User') {
                         File::put($directory.'\\'. $fileName.'.php', str($prevContent)->replaceLast('}', '').$relationship);
                     }
                 }
             }
+        }
+    }
 
-            /*            if($fileName !== 'User') {
-                            File::put($directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$guarded = [];\n$relationship\n}");
-                        }*/
-            //todo: end
-
-            //Artisan::call("make:filament-resource $fileName --generate");
+    private function generateFilamentResources($tables, $tableReference)
+    {
+        foreach ($tables as $table) {
+            $tableName = $table->$tableReference;
+            $fileName = Str::singular(Str::ucfirst(Str::camel($tableName)));
+            Artisan::call("make:filament-resource $fileName --generate");
         }
     }
 }
