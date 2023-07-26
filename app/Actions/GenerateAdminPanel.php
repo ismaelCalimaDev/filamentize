@@ -48,10 +48,11 @@ class GenerateAdminPanel
             if (!File::exists($this->directory)) {
                 File::makeDirectory($this->directory);
             }
-            //todo: check this edge case
-            if($fileName !== 'User') {
-                File::put($this->directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$table = '$tableName';\n\tprotected \$guarded = [];\n}");
+
+            if($fileName === 'User') {
+                continue;
             }
+            File::put($this->directory.'\\'. $fileName.'.php', "<?php\n\nnamespace App\Models;\n\nuse Illuminate\Database\Eloquent\Factories\HasFactory;\nuse Illuminate\Database\Eloquent\Model;\nuse Illuminate\Database\Eloquent\Relations\BelongsTo;\nuse Illuminate\Database\Eloquent\Relations\BelongsToMany;\nuse Illuminate\Database\Eloquent\Relations\HasMany;\n\nclass $fileName extends Model\n{\n\tprotected \$table = '$tableName';\n\tprotected \$guarded = [];\n}");
         }
     }
 
@@ -94,9 +95,7 @@ class GenerateAdminPanel
                     $relationshipFileName = Str::singular(Str::ucfirst(Str::camel($referencedTable)));
                     $prevContent = File::get($this->directory.'\\'. $fileName.'.php');
                     $relationship = "\n\tpublic function ".Str::singular(Str::camel($referencedTable))."(): BelongsTo\n\t{\n\t\treturn \$this->belongsTo(".$relationshipFileName."::class, '$localColumns[0]');\n\t}\n}";
-                    if($fileName !== 'User') {
-                        File::put($this->directory.'\\'. $fileName.'.php', str($prevContent)->replaceLast('}', '').$relationship);
-                    }
+                    File::put($this->directory.'\\'. $fileName.'.php', str($prevContent)->replaceLast('}', '').$relationship);
                 }
             }
         }
